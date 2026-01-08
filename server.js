@@ -54,12 +54,23 @@ async function scrapeRutificador(rut) {
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
-                '--window-size=1920x1080'
+                '--window-size=1920x1080',
+                '--disable-blink-features=AutomationControlled' // Importante para evadir detección
             ]
         });
 
         const page = await browser.newPage();
+
+        // Evasión básica de detección
+        await page.evaluateOnNewDocument(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        });
+
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'es-ES,es;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8'
+        });
 
         // Navegar a la nueva URL
         await page.goto('https://rutificador.net/rut/', {
@@ -68,11 +79,11 @@ async function scrapeRutificador(rut) {
         });
 
         // Esperar al input #rut
-        await page.waitForSelector('input#rut', { timeout: 10000 });
+        await page.waitForSelector('input#rut', { timeout: 15000 });
 
         // Escribir el RUT (el sitio lo formatea automáticamente, enviamos sin puntos por si acaso)
         // El sitio usa un script que formatea, así que escribimos lento para que funcione su JS
-        await page.type('input#rut', rut, { delay: 100 });
+        await page.type('input#rut', rut, { delay: 150 });
 
         // Click en buscar
         await page.click('button#btn-buscar');
@@ -85,16 +96,13 @@ async function scrapeRutificador(rut) {
             // Aumentamos el timeout a 20s para conexiones más lentas
             await page.waitForSelector('#tabla-resultados tbody tr td', { timeout: 20000 });
         } catch (e) {
-            // Si falla, intentamos ver si hay un mensale de alerta
-            const alert = await page.$('#alert-container .alert');
-            if (alert) {
-                const text = await page.evaluate(el => el.textContent, alert);
-                return { success: false, error: text, rut: formattedRut };
-            }
+            // Diagnóstico: Obtener qué hay en la página si falla
+            const pageTitle = await page.title();
+            const bodyText = await page.evaluate(() => document.body.innerText.substring(0, 500).replace(/\n/g, ' '));
 
             return {
                 success: false,
-                error: 'No se encontraron resultados (Timeout)',
+                error: `Timeout. Título: "${pageTitle}". Texto visible: "${bodyText}..."`,
                 rut: formattedRut
             };
         }
