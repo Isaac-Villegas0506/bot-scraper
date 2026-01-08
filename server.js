@@ -77,14 +77,24 @@ async function scrapeRutificador(rut) {
         // Click en buscar
         await page.click('button#btn-buscar');
 
+        // Esperar un poco para que la petición AJAX inicie
+        await new Promise(r => setTimeout(r, 2000));
+
         // Esperar a que la tabla de resultados aparezca o un mensaje de error
         try {
-            await page.waitForSelector('#tabla-resultados tbody tr td', { timeout: 10000 });
+            // Aumentamos el timeout a 20s para conexiones más lentas
+            await page.waitForSelector('#tabla-resultados tbody tr td', { timeout: 20000 });
         } catch (e) {
-            // Si no encuentra la tabla, puede ser que no haya resultados
+            // Si falla, intentamos ver si hay un mensale de alerta
+            const alert = await page.$('#alert-container .alert');
+            if (alert) {
+                const text = await page.evaluate(el => el.textContent, alert);
+                return { success: false, error: text, rut: formattedRut };
+            }
+
             return {
                 success: false,
-                error: 'No se encontraron resultados',
+                error: 'No se encontraron resultados (Timeout)',
                 rut: formattedRut
             };
         }
